@@ -21,7 +21,7 @@ import yfinance as yf
 
 # ═══════ CONFIG ═══════
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True, allow_headers=["Content-Type", "Authorization"], expose_headers=["Content-Type"])
 
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///diy.db")
@@ -197,16 +197,20 @@ def auth_required(f):
         if auth.startswith("Bearer "):
             token = auth[7:]
         if not token:
+            log.warning(f"[AUTH] No token for {request.path}")
             return jsonify({"error": "Login required"}), 401
         try:
             data = pyjwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
             g.user = User.query.get(data["uid"])
             if not g.user:
+                log.warning(f"[AUTH] User {data.get('uid')} not found")
                 return jsonify({"error": "User not found"}), 401
         except pyjwt.ExpiredSignatureError:
+            log.warning(f"[AUTH] Expired token for {request.path}")
             return jsonify({"error": "Token expired, please login again"}), 401
-        except Exception:
-            return jsonify({"error": "Invalid token"}), 401
+        except Exception as e:
+            log.warning(f"[AUTH] Invalid token for {request.path}: {e}")
+            return jsonify({"error": "Invalid token, please login again"}), 401
         return f(*args, **kwargs)
     return decorated
 
